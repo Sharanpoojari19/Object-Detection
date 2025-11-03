@@ -1,49 +1,76 @@
-// load model from github path
-let modelURL = "models/yolov8s.onnx";
-
-let session = null;
-let canvas = document.getElementById("canvas");
+let session;
+let canvas = document.getElementById("out");
 let ctx = canvas.getContext("2d");
-let video = document.getElementById("video");
+let video = document.getElementById("vid");
 
-async function loadModel(){
-    if(!session){
-        session = await ort.InferenceSession.create(modelURL);
+(async()=>{
+  session = await ort.InferenceSession.create("./model/yolov8n.onnx");
+})();
+
+async function runModel(imgData){
+  let tensor = new ort.Tensor("float32", imgData.data, [1, imgData.height, imgData.width, 4]);
+  let r = await session.run({images:tensor});
+  drawBoxes(r.output0, imgData.width, imgData.height);
+}
+
+function drawBoxes(dets,w,h){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(tempImg,0,0);
+
+  dets.data.forEach((v,i)=>{
+    if(i%6===0){
+      let x=v*640;
+      let y=dets.data[i+1]*480;
+      let x2=dets.data[i+2]*640;
+      let y2=dets.data[i+3]*480;
+      ctx.strokeStyle="red";
+      ctx.strokeRect(x,y,x2-x,y2-y);
     }
+  });
 }
 
-function drawBox(x1,y1,x2,y2,label){
-    ctx.strokeStyle = "lime";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x1,y1,(x2-x1),(y2-y1));
-    ctx.fillStyle="lime";
-    ctx.font="14px Arial";
-    ctx.fillText(label,x1,y1-4);
+function loadImage(){
+  let inp=document.createElement("input");
+  inp.type="file";
+  inp.accept="image/*";
+  inp.onchange=e=>{
+    let file=URL.createObjectURL(e.target.files[0]);
+    tempImg=new Image();
+    tempImg.onload=()=>{
+      ctx.drawImage(tempImg,0,0,640,480);
+      let iData=ctx.getImageData(0,0,640,480);
+      runModel(iData);
+    };
+    tempImg.src=file;
+  }
+  inp.click();
 }
 
-async function runImg(img){
-    await loadModel();
-
-    ctx.drawImage(img,0,0,640,480);
-    // here normally decode output but fake demo
-    drawBox(50,50,200,200,"object");
+function loadVideo(){
+  let inp=document.createElement("input");
+  inp.type="file";
+  inp.accept="video/*";
+  inp.onchange=e=>{
+    video.src=URL.createObjectURL(e.target.files[0]);
+    video.onplay=()=>loopVid();
+    video.style.display="block";
+    video.play();
+  }
+  inp.click();
 }
 
-function selectImage(){
-    let i = document.createElement("input");
-    i.type="file"; i.accept="image/*";
-    i.onchange = ()=>{
-        let img = new Image();
-        img.onload = ()=> runImg(img);
-        img.src = URL.createObjectURL(i.files[0]);
-    }
-    i.click();
+function loopVid(){
+  if(video.paused||video.ended)return;
+  ctx.drawImage(video,0,0,640,480);
+  let iData=ctx.getImageData(0,0,640,480);
+  runModel(iData);
+  requestAnimationFrame(loopVid);
 }
 
-function selectVideo(){
-    alert("demo trimmed: video control later — first get model working");
-}
-
-function startWebcam(){
-    alert("demo trimmed: webcam later — first confirm image works");
+async function startWebcam(){
+  let stream=await navigator.mediaDevices.getUserMedia({video:true});
+  video.srcObject=stream;
+  video.onplay=()=>loopVid();
+  video.style.display="block";
+  video.play();
 }
